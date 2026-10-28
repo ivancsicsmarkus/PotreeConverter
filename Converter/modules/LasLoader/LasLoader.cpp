@@ -3,6 +3,46 @@
 
 #include "laszip/laszip_api.h"
 
+#include <mutex>
+
+static bool recomputeBounds = false;
+static mutex boundsMutex;
+static unordered_map<string, pair<Vector3, Vector3>> boundsCache;
+
+void setRecomputeBounds(bool enabled) {
+	recomputeBounds = enabled;
+}
+
+// Bounds of every point in the file, padded by one scale unit on each side so
+// a point on the edge still lands inside the box after the chunker re-quantises
+// it. Returns false (bounds untouched) when the file has no readable points.
+static bool computePointBounds(laszip_POINTER reader, int64_t numPoints, Vector3 scale, Vector3& min, Vector3& max) {
+	Vector3 pmin = { Infinity, Infinity, Infinity };
+	Vector3 pmax = { -Infinity, -Infinity, -Infinity };
+	double coordinates[3];
+	int64_t numRead = 0;
+
+	for (int64_t i = 0; i < numPoints; i++) {
+		if (laszip_read_point(reader)) break;
+		laszip_get_coordinates(reader, coordinates);
+
+		pmin.x = std::min(pmin.x, coordinates[0]);
+		pmin.y = std::min(pmin.y, coordinates[1]);
+		pmin.z = std::min(pmin.z, coordinates[2]);
+		pmax.x = std::max(pmax.x, coordinates[0]);
+		pmax.y = std::max(pmax.y, coordinates[1]);
+		pmax.z = std::max(pmax.z, coordinates[2]);
+		numRead++;
+	}
+
+	if (numRead == 0) return false;
+
+	min = pmin - scale;
+	max = pmax + scale;
+
+	return true;
+}
+
 
 LasTypeInfo lasTypeInfo(int typeID) {
 
@@ -117,6 +157,33 @@ LasHeader loadLasHeader(string path) {
 		memcpy(vlr.data.data(), laszip_vlr.data, vlr.recordLengthAfterHeader);
 
 		result.vlrs.push_back(vlr);
+	}
+
+	if (recomputeBounds) {
+		bool cached = false;
+		{
+			lock_guard<mutex> lock(boundsMutex);
+			auto it = boundsCache.find(path);
+			if (it != boundsCache.end()) {
+				result.min = it->second.first;
+				result.max = it->second.second;
+				cached = true;
+			}
+		}
+
+		Vector3 min = result.min;
+		Vector3 max = result.max;
+		if (!cached && computePointBounds(laszip_reader, result.numPoints, result.scale, min, max)) {
+			cout << "recomputed bounds of " << path << endl;
+			cout << "	header min: " << result.min.toString() << ", max: " << result.max.toString() << endl;
+			cout << "	points min: " << min.toString() << ", max: " << max.toString() << endl;
+
+			result.min = min;
+			result.max = max;
+
+			lock_guard<mutex> lock(boundsMutex);
+			boundsCache[path] = { min, max };
+		}
 	}
 
 

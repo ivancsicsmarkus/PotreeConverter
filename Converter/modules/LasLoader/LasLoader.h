@@ -38,5 +38,10 @@ LasTypeInfo lasTypeInfo(int typeID);
 
 LasHeader loadLasHeader(string path);
 
+// When enabled, loadLasHeader reports the bounding box of the points
+// themselves instead of the header's min/max, which some writers leave stale
+// or wrong. Costs one extra read of every point per file (cached per path).
+void setRecomputeBounds(bool enabled);
+
 
 

@@ -34,6 +34,7 @@ Options parseArguments(int argc, char** argv) {
 	args.addArgument("projection", "Add the projection of the pointcloud to the metadata");
 	args.addArgument("generate-page,p", "Generate a ready to use web page with the given name");
 	args.addArgument("title", "Page title used when generating a web page");
+	args.addArgument("recompute-bounds", "Compute the bounding box from the points instead of the LAS header");
 
 	if (args.has("help")) {
 		cout << "PotreeConverter <source> -o <outdir>" << endl;
@@ -134,6 +135,7 @@ Options parseArguments(int argc, char** argv) {
 	options.keepChunks = keepChunks;
 	options.noChunking = noChunking;
 	options.noIndexing = noIndexing;
+	options.recomputeBounds = args.has("recompute-bounds");
 
 	//cout << "flags: ";
 	//for (string flag : options.flags) {
@@ -520,6 +522,7 @@ int main(int argc, char** argv) {
 	cout << "#threads: " << cpuData.numProcessors << endl;
 
 	auto options = parseArguments(argc, argv);
+	setRecomputeBounds(options.recomputeBounds);
 
 	auto [name, sources] = curateSources(options.source);
 	if (options.name.size() == 0) {
